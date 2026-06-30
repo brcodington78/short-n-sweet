@@ -12,8 +12,109 @@ datasource db {
   provider = "postgresql"
 }
 
-model Example {
-  id        String   @id @default(cuid())
-  name      String
+// User.id matches the Supabase auth.users.id (uuid). The `auth` schema is
+// managed by Supabase, not Prisma, so there's no DB-level FK to it here —
+// the app must set this id from the authenticated Supabase user on signup.
+model User {
+  id        String   @id
+  email     String   @unique
   createdAt DateTime @default(now())
+
+  subscriptions Subscription[]
+  emailLogs     EmailLog[]
+}
+
+model Channel {
+  id                String   @id @default(cuid())
+  supadataChannelId String   @unique
+  uploadsPlaylistId String
+  name              String
+  handle            String?
+  description       String?
+  thumbnailUrl      String?
+  url               String?
+  lastCheckedAt     DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  videos        Video[]
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id        String   @id @default(cuid())
+  userId    String
+  channelId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channelId])
+}
+
+model Video {
+  id              String    @id @default(cuid())
+  supadataVideoId String    @unique
+  channelId       String
+  title           String
+  description     String?
+  thumbnailUrl    String?
+  url             String?
+  durationSeconds Int?
+  publishedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  channel    Channel     @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  transcript Transcript?
+  summary    Summary?
+  emailLogs  EmailLog[]
+}
+
+model Transcript {
+  id        String   @id @default(cuid())
+  videoId   String   @unique
+  content   String
+  language  String?
+  fetchedAt DateTime @default(now())
+
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+}
+
+// Generated once per video and shared by every subscriber (not personalized).
+// promptVersion/model are tracked since the summarization prompt is still
+// being iterated on, so past summaries can be told apart from future ones.
+model Summary {
+  id            String   @id @default(cuid())
+  videoId       String   @unique
+  content       String
+  model         String?
+  promptVersion String?
+  generatedAt   DateTime @default(now())
+
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+}
+
+// Tracks per-(user, video) send status so a user is never emailed twice
+// about the same video.
+model EmailLog {
+  id        String      @id @default(cuid())
+  userId    String
+  videoId   String
+  status    EmailStatus @default(PENDING)
+  sentAt    DateTime?
+  error     String?
+  createdAt DateTime    @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, videoId])
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
 }
