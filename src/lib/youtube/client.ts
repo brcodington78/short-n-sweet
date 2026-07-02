@@ -29,6 +29,11 @@ export interface YoutubeChannelInfo {
 }
 
 export async function getChannel(channelId: string): Promise<YoutubeChannelInfo> {
+  // accepts a channel ID (UC...), a @handle, or a legacy username
+  const lookup: Record<string, string> = channelId.startsWith("@")
+    ? { forHandle: channelId.slice(1) }
+    : { id: channelId };
+
   const data = await yt<{
     items?: {
       id: string;
@@ -42,7 +47,7 @@ export async function getChannel(channelId: string): Promise<YoutubeChannelInfo>
     }[];
   }>("/channels", {
     part: "snippet,contentDetails",
-    id: channelId,
+    ...lookup,
   });
 
   const item = data.items?.[0];

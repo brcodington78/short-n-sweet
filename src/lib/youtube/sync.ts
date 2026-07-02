@@ -26,10 +26,10 @@ async function collectNewVideoIds(channel: Channel): Promise<string[]> {
     if (page.videoIds.length === 0) break;
 
     const existing = await prisma.video.findMany({
-      where: { supadataVideoId: { in: page.videoIds } },
-      select: { supadataVideoId: true },
+      where: { youtubeVideoId: { in: page.videoIds } },
+      select: { youtubeVideoId: true },
     });
-    const knownIds = new Set(existing.map((v) => v.supadataVideoId));
+    const knownIds = new Set(existing.map((v) => v.youtubeVideoId));
 
     let hitKnown = false;
     for (const id of page.videoIds) {
@@ -53,7 +53,7 @@ async function saveNewVideos(channelId: string, videoIds: string[]): Promise<voi
 
   await prisma.video.createMany({
     data: metas.map((v) => ({
-      supadataVideoId: v.id,
+      youtubeVideoId: v.id,
       channelId,
       title: v.title,
       description: v.description,
@@ -73,10 +73,10 @@ async function saveTranscripts(videoIds: string[]): Promise<void> {
   if (results.length === 0) return;
 
   const videos = await prisma.video.findMany({
-    where: { supadataVideoId: { in: results.map((r) => r.videoId) } },
-    select: { id: true, supadataVideoId: true },
+    where: { youtubeVideoId: { in: results.map((r) => r.videoId) } },
+    select: { id: true, youtubeVideoId: true },
   });
-  const videoMap = new Map(videos.map((v) => [v.supadataVideoId, v.id]));
+  const videoMap = new Map(videos.map((v) => [v.youtubeVideoId, v.id]));
 
   await prisma.transcript.createMany({
     data: results.flatMap((r) => {

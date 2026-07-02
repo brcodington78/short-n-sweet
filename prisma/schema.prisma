@@ -3,14 +3,14 @@
 
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
-generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
-}
-
 datasource db {
   provider = "postgresql"
 }
+generator client {
+  provider = "prisma-client"
+  output   = "./generated"
+}
+
 
 // User.id matches the Supabase auth.users.id (uuid). The `auth` schema is
 // managed by Supabase, not Prisma, so there's no DB-level FK to it here —
@@ -26,7 +26,7 @@ model User {
 
 model Channel {
   id                String   @id @default(cuid())
-  supadataChannelId String   @unique
+  youtubeChannelId  String   @unique
   uploadsPlaylistId String
   name              String
   handle            String?
@@ -55,7 +55,7 @@ model Subscription {
 
 model Video {
   id              String    @id @default(cuid())
-  supadataVideoId String    @unique
+  youtubeVideoId  String    @unique
   channelId       String
   title           String
   description     String?
