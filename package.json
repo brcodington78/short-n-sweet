@@ -12,6 +12,7 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.5.12",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@supabase/ssr": "^0.12.0",

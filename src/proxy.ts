@@ -1,9 +1,16 @@
-import { type NextRequest } from "next/server";
-import { updateSession } from "@/utils/supabase/middleware";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-export async function proxy(request: NextRequest) {
-  return updateSession(request);
-}
+const isPublicRoute = createRouteMatcher([
+  "/sign-in(.*)",
+  "/sign-up(.*)",
+  "/api/cron(.*)",
+]);
+
+export const proxy = clerkMiddleware(async (auth, request) => {
+  if (!isPublicRoute(request)) {
+    await auth.protect();
+  }
+});
 
 export const config = {
   matcher: [

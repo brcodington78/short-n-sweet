@@ -12,9 +12,8 @@ generator client {
 }
 
 
-// User.id matches the Supabase auth.users.id (uuid). The `auth` schema is
-// managed by Supabase, not Prisma, so there's no DB-level FK to it here —
-// the app must set this id from the authenticated Supabase user on signup.
+// User.id holds the Clerk user ID (e.g. "user_2NNq...").
+// Set this from the Clerk userId when creating a User row on first sign-in.
 model User {
   id        String   @id
   email     String   @unique
