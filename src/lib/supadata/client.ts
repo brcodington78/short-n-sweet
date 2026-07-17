@@ -54,6 +54,30 @@ interface BatchJobStatus {
   }>;
 }
 
+export async function getTranscript(
+  videoId: string
+): Promise<TranscriptResult | null> {
+  const res = await fetch(
+    `${BASE}/youtube/transcript?videoId=${encodeURIComponent(videoId)}&text=true`,
+    { headers: { "x-api-key": apiKey() } }
+  );
+
+  if (res.status === 404) return null; // no transcript available for this video
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supadata GET /youtube/transcript ${res.status}: ${text}`);
+  }
+
+  const data = await res.json() as { content: string; lang?: string };
+  return {
+    videoId,
+    content: typeof data.content === "string"
+      ? data.content
+      : (data.content as Array<{ text: string }>).map((s) => s.text).join(" "),
+    language: data.lang ?? null,
+  };
+}
+
 export async function startTranscriptBatch(
   videoIds: string[]
 ): Promise<string> {

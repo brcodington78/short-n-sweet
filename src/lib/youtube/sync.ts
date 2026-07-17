@@ -1,23 +1,42 @@
 import { prisma } from "@/lib/prisma";
 import { listUploads, getVideosBatch } from "@/lib/youtube/client";
-import { startTranscriptBatch, pollBatchJob } from "@/lib/supadata/client";
+import { getTranscript } from "@/lib/supadata/client";
 import type { ChannelModel as Channel } from "@/generated/prisma/models/Channel";
 
-export async function syncChannel(channel: Channel): Promise<void> {
-  const newIds = await collectNewVideoIds(channel);
+export async function syncChannel(
+  channel: Channel,
+  options: { limit?: number } = {}
+): Promise<void> {
+  const newIds = await collectNewVideoIds(channel, options.limit);
 
   await prisma.channel.update({
     where: { id: channel.id },
     data: { lastCheckedAt: new Date() },
   });
 
-  if (newIds.length === 0) return;
+  if (newIds.length > 0) {
+    await saveNewVideos(channel.id, newIds);
+  }
 
-  await saveNewVideos(channel.id, newIds);
-  await saveTranscripts(newIds);
+  // Fetch transcripts for any videos in this channel that don't have one yet
+  // (covers both new videos and ones where transcript fetching previously failed)
+  // hasCaptions=true (YouTube API) only flags human captions, not auto-generated ones.
+  // Supadata can fetch auto-generated captions at the same 1-credit rate and returns
+  // 404 (no charge) when no captions exist at all — so let Supadata be the gate.
+  const missing = await prisma.video.findMany({
+    where: { channelId: channel.id, transcript: null },
+    orderBy: { publishedAt: "desc" },
+    take: options.limit,
+    select: { id: true, youtubeVideoId: true, hasCaptions: true },
+  });
+
+  await saveTranscripts(missing);
 }
 
-async function collectNewVideoIds(channel: Channel): Promise<string[]> {
+async function collectNewVideoIds(
+  channel: Channel,
+  limit?: number
+): Promise<string[]> {
   const collected: string[] = [];
   let pageToken: string | undefined;
 
@@ -35,13 +54,16 @@ async function collectNewVideoIds(channel: Channel): Promise<string[]> {
     for (const id of page.videoIds) {
       if (knownIds.has(id)) {
         hitKnown = true;
-        break;
+        // With a limit we skip known IDs and keep searching for new ones.
+        // Without a limit (full sync) we stop here — all older videos are assumed present.
+        if (limit) continue;
+        else break;
       }
       collected.push(id);
+      if (limit && collected.length >= limit) return collected;
     }
 
-    // newest-first: once we hit a known ID, all subsequent pages are older = already known
-    if (hitKnown || !page.nextPageToken) break;
+    if ((!limit && hitKnown) || !page.nextPageToken) break;
     pageToken = page.nextPageToken;
   }
 
@@ -61,29 +83,28 @@ async function saveNewVideos(channelId: string, videoIds: string[]): Promise<voi
       url: `https://youtube.com/watch?v=${v.id}`,
       durationSeconds: v.durationSeconds,
       publishedAt: v.publishedAt,
+      hasCaptions: v.hasCaptions,
     })),
     skipDuplicates: true,
   });
 }
 
-async function saveTranscripts(videoIds: string[]): Promise<void> {
-  const jobId = await startTranscriptBatch(videoIds);
-  const results = await pollBatchJob(jobId);
+async function saveTranscripts(
+  videos: { id: string; youtubeVideoId: string; hasCaptions: boolean }[]
+): Promise<void> {
+  for (const video of videos) {
+    const result = await getTranscript(video.youtubeVideoId);
+    if (!result) continue;
 
-  if (results.length === 0) return;
-
-  const videos = await prisma.video.findMany({
-    where: { youtubeVideoId: { in: results.map((r) => r.videoId) } },
-    select: { id: true, youtubeVideoId: true },
-  });
-  const videoMap = new Map(videos.map((v) => [v.youtubeVideoId, v.id]));
-
-  await prisma.transcript.createMany({
-    data: results.flatMap((r) => {
-      const id = videoMap.get(r.videoId);
-      if (!id) return [];
-      return [{ videoId: id, content: r.content, language: r.language }];
-    }),
-    skipDuplicates: true,
-  });
+    await prisma.transcript.upsert({
+      where: { videoId: video.id },
+      create: {
+        videoId: video.id,
+        content: result.content,
+        language: result.language,
+        source: video.hasCaptions ? "HUMAN" : "AUTO",
+      },
+      update: {},
+    });
+  }
 }

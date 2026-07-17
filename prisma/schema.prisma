@@ -8,7 +8,7 @@ datasource db {
 }
 generator client {
   provider = "prisma-client"
-  output   = "./generated"
+  output   = "../src/generated/prisma"
 }
 
 
@@ -17,10 +17,12 @@ generator client {
 model User {
   id        String   @id
   email     String   @unique
+  isPremium Boolean  @default(false)
   createdAt DateTime @default(now())
 
   subscriptions Subscription[]
   emailLogs     EmailLog[]
+  summaries     Summary[]
 }
 
 model Channel {
@@ -41,10 +43,13 @@ model Channel {
 }
 
 model Subscription {
-  id        String   @id @default(cuid())
-  userId    String
-  channelId String
-  createdAt DateTime @default(now())
+  id             String   @id @default(cuid())
+  userId         String
+  channelId      String
+  preferredModel String?  // null → Haiku default; validated against approved list on write
+  promptPreset   String?  // null → "general"; one of: general | stock_picks | bull_bear | fact_check
+  customPrompt   String?  // null → use preset; premium users only; max 2000 chars
+  createdAt      DateTime @default(now())
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
@@ -62,37 +67,47 @@ model Video {
   url             String?
   durationSeconds Int?
   publishedAt     DateTime?
+  hasCaptions     Boolean   @default(false)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   channel    Channel     @relation(fields: [channelId], references: [id], onDelete: Cascade)
   transcript Transcript?
-  summary    Summary?
+  summaries  Summary[]
   emailLogs  EmailLog[]
 }
 
 model Transcript {
-  id        String   @id @default(cuid())
-  videoId   String   @unique
+  id        String           @id @default(cuid())
+  videoId   String           @unique
   content   String
   language  String?
-  fetchedAt DateTime @default(now())
+  source    TranscriptSource @default(AUTO)
+  fetchedAt DateTime         @default(now())
 
   video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
 }
 
-// Generated once per video and shared by every subscriber (not personalized).
-// promptVersion/model are tracked since the summarization prompt is still
-// being iterated on, so past summaries can be told apart from future ones.
+enum TranscriptSource {
+  HUMAN // channel-uploaded caption track (YouTube hasCaptions = true)
+  AUTO  // YouTube auto-generated captions fetched via Supadata
+}
+
+// Per-user summary — each subscriber gets their own generated output using
+// their chosen model and prompt preset/custom prompt.
 model Summary {
   id            String   @id @default(cuid())
-  videoId       String   @unique
+  videoId       String
+  userId        String
   content       String
   model         String?
-  promptVersion String?
+  promptVersion String?  // e.g. "preset:stock_picks", "custom:v1", "preset:general"
   generatedAt   DateTime @default(now())
 
   video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([videoId, userId])
 }
 
 // Tracks per-(user, video) send status so a user is never emailed twice

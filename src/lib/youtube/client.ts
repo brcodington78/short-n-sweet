@@ -97,6 +97,7 @@ export interface YoutubeVideoMeta {
   thumbnailUrl: string | null;
   durationSeconds: number | null;
   publishedAt: Date | null;
+  hasCaptions: boolean;
 }
 
 function parseDuration(iso: string): number | null {
@@ -122,7 +123,7 @@ export async function getVideosBatch(videoIds: string[]): Promise<YoutubeVideoMe
           publishedAt?: string;
           thumbnails?: { default?: { url: string } };
         };
-        contentDetails: { duration: string };
+        contentDetails: { duration: string; caption?: string };
       }[];
     }>("/videos", {
       part: "snippet,contentDetails",
@@ -139,6 +140,7 @@ export async function getVideosBatch(videoIds: string[]): Promise<YoutubeVideoMe
         publishedAt: item.snippet.publishedAt
           ? new Date(item.snippet.publishedAt)
           : null,
+        hasCaptions: item.contentDetails.caption === "true",
       });
     }
   }
